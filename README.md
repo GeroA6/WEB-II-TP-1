@@ -1,67 +1,95 @@
 # TP1 · Spring Boot, API REST y arquitectura en capas
 
-Punto de partida del práctico. Está armada la **configuración e
-infraestructura transversal** que van a necesitar sin importar cómo
-resuelvan cada consigna; lo que falta —el diseño y la lógica propia de cada
-recurso— se va a ir sumando a esta rama a medida que avance la cursada.
+Resolución del Trabajo Práctico 1 para la materia **Web II**.  
+El proyecto implementa una API REST modular construida sobre **Spring Boot 4.1.x** y **Java 25**, aplicando una arquitectura en capas (**Controller → Service → Repository / Client**), desacoplamiento mediante DTOs, validación con Bean Validation, manejo centralizado de errores (`ProblemDetail` RFC 7807) y documentación con Swagger / OpenAPI.
+
+---
 
 ## Cómo levantar el proyecto
 
-Requiere Java 25. Usar siempre el wrapper, nunca un `mvn` instalado aparte:
+Requiere Java 25. Usar siempre el wrapper de Maven (`mvnw`):
 
-```
+```bash
 # Windows
 .\mvnw.cmd spring-boot:run
 
-# macOS/Linux
+# macOS / Linux
 ./mvnw spring-boot:run
 ```
 
-Cuando el log muestre `Started DemoApplication`, la app queda escuchando en
-`http://localhost:8080`.
+Cuando el log muestre `Started DemoApplication`, la API quedará escuchando en `http://localhost:8080`.
 
-Para compilar y correr los tests: `./mvnw test` (o `.\mvnw.cmd test`).
+Para compilar y correr los tests:
 
-## Endpoints disponibles hoy
+```bash
+# Windows
+.\mvnw.cmd test
 
-| Método | Path | Qué hace |
-|---|---|---|
-| GET | `/health` | Chequeo de salud básico |
-| GET | `/ping` | Devuelve `pong`, sin JSON — otro chequeo trivial |
-
-```
-curl http://localhost:8080/health
-curl http://localhost:8080/ping
+# macOS / Linux
+./mvnw test
 ```
 
-## Qué ya está armado
+---
 
-- **`config/RestClientConfig`**: bean de `RestClient` apuntado a la
-  `base-url` de DummyJSON (`app.dummyjson.base-url` en
-  `application.properties`). Listo para inyectar.
-- **`config/OpenApiConfig`**: metadata general de Swagger UI.
-- **`client/dummyjson/DummyJsonProducto` y `DummyJsonProductosResponse`**:
-  la forma exacta del JSON que devuelve `https://dummyjson.com/products` —
-  para no tener que adivinar los nombres de campo del proveedor externo.
-- **`exception/GlobalExceptionHandler`** (+ `RecursoNoEncontradoException` y
-  `ServicioExternoException`): manejo uniforme de errores para toda la API
-  (`ProblemDetail`). Ya contempla 404 y errores de un servicio externo —
-  se reusa tal cual para cualquier recurso nuevo que se agregue.
+## Documentación interactiva (Swagger UI)
 
-## Qué falta (eso es la consigna)
+Una vez levantada la aplicación, podés consultar y probar todos los endpoints de forma interactiva en Swagger UI navegando a:
 
-- Un cliente propio (`DummyJsonClient` o como se llame) que use el
-  `RestClient` ya configurado para llamar a `/products` y `/products/{id}`,
-  manejando los errores de red/HTTP con las excepciones ya definidas.
-- Un DTO propio para el producto (no el JSON externo tal cual) y el
-  service/controller de `/api/productos`.
-- Todo el recurso de favoritos: entidad, repository en memoria, DTOs,
-  service y controller CRUD.
-- Anotar los controllers con `@Tag`/`@Operation` para que Swagger UI los
-  documente.
+**[http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)**  
+*(o alternativamente `http://localhost:8080/swagger-ui.html`)*
 
-## Dependencias
+La documentación organiza los endpoints en dos grupos principales mediante `@Tag`:
+- `productos`: Catálogo de solo lectura que consume una API externa.
+- `favoritos`: Recurso propio con CRUD completo en memoria.
 
-- `spring-boot-starter-webmvc` — Spring MVC + Tomcat embebido.
-- `spring-boot-starter-validation` — Bean Validation (`@NotNull`, `@NotBlank`, ...).
-- `springdoc-openapi-starter-webmvc-ui` — Swagger UI / OpenAPI.
+---
+
+## Endpoints de la API
+
+### 1. Utilidades y Health Check
+| Método | Path | Qué hace | Código HTTP |
+|---|---|---|---|
+| GET | `/health` | Chequeo de salud del servicio | 200 OK |
+| GET | `/ping` | Chequeo trivial (devuelve `pong`) | 200 OK |
+
+### 2. Catálogo de Productos (Consumo externo a DummyJSON)
+| Método | Path | Qué hace | Códigos HTTP |
+|---|---|---|---|
+| GET | `/api/productos` | Lista todos los productos mapeados a `ProductoDTO` | 200 OK |
+| GET | `/api/productos/{id}` | Obtiene un producto por su ID | 200 OK / 404 Not Found |
+
+### 3. Favoritos (CRUD propio en memoria)
+| Método | Path | Qué hace | Códigos HTTP |
+|---|---|---|---|
+| POST | `/api/favoritos` | Crea un favorito (valida campos obligatorios) | 201 Created (+ Location) / 400 Bad Request |
+| GET | `/api/favoritos` | Lista todos los favoritos | 200 OK |
+| GET | `/api/favoritos/{id}` | Obtiene un favorito por su ID | 200 OK / 404 Not Found |
+| PUT | `/api/favoritos/{id}` | Actualiza un favorito (conserva `fechaAgregado`) | 200 OK / 400 Bad Request / 404 Not Found |
+| DELETE | `/api/favoritos/{id}` | Elimina un favorito por su ID | 204 No Content / 404 Not Found |
+
+---
+
+## Colección de Pruebas (`requests.http`)
+
+En la raíz del proyecto se incluye el archivo `requests.http`, que contiene peticiones listas para ejecutar con la extensión **REST Client** de VS Code o **HTTP Client** de IntelliJ.
+
+Incluye pruebas para:
+- **Casos de éxito:**
+  - Consumo y mapeo de productos.
+  - Creación de favorito con retorno de `201 Created` y cabecera `Location`.
+  - Lectura, actualización y eliminación de favoritos.
+- **Casos de error:**
+  - `404 Not Found`: Búsqueda, actualización o eliminación de IDs inexistentes (en productos y favoritos).
+  - `400 Bad Request`: Validación fallida al enviar campos en blanco o nulos en `FavoritoRequest`.
+
+---
+
+## Arquitectura y Decisiones de Diseño
+
+1. **Desacoplamiento con DTOs (`records`):**
+   - La API no expone el modelo tal cual lo devuelve DummyJSON (`DummyJsonProducto`), sino un DTO propio (`ProductoDTO`).
+   - Para favoritos se separó la entrada (`FavoritoRequest`, con validaciones `@NotNull` y `@NotBlank`) de la salida (`FavoritoResponse`), protegiendo la inmutabilidad y evitando manipulación indebida de `id` o `fechaAgregado`.
+2. **Repositorio en Memoria Thread-Safe:**
+   - La implementación `InMemoryFavoritoRepository` utiliza `ConcurrentHashMap` y `AtomicLong` para garantizar consistencia ante múltiples peticiones concurrentes en Tomcat.
+3. **Manejo Centralizado de Excepciones:**
+   - Mediante `@RestControllerAdvice` (`GlobalExceptionHandler`), todos los errores se traducen a respuestas estándar bajo la especificación **ProblemDetail (RFC 7807)** con código de estado, título y detalle.
